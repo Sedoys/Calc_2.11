@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Калькулятор ДТФ 2.11</title>
+<title>Калькулятор ДТФ 2.12</title>
 <style>
   :root {
     --main-bg: #f0f2f5;
@@ -24,14 +24,14 @@
   label { display:flex; flex-direction:column; font-size:14px; color:#444; min-width:120px }
   .preview { margin-top:16px; height:360px; overflow:auto; background:#ccc; border-radius:10px; padding:10px }
   #previewCanvas { position:relative; width:580px; min-height:100px; margin:0 auto; border:2px dashed #888; background:#fff }
-  .print-rect { position:absolute; background:rgba(74,144,226,0.5); border:1px solid #2c6db2; color:#fff; display:flex; align-items:center; justify-content:center; font-size:11px; border-radius:4px; box-sizing:border-box }
-  #result { font-weight:bold; color:var(--accent-color); text-align:right; margin-top:10px }
+  .print-rect { position:absolute; border:1px solid #2c6db2; color:#fff; display:flex; align-items:center; justify-content:center; font-size:11px; border-radius:4px; box-sizing:border-box }
+  #result { font-weight:bold; color:var(--accent-color); text-align:right; margin-top:10px; white-space:pre-line }
   @media (max-width:600px) { #previewCanvas { width:100% } .inputs-row { flex-direction:column } }
 </style>
 </head>
 <body>
 <div class="container">
-  <h1>Калькулятор ДТФ 2.11</h1>
+  <h1>Калькулятор ДТФ 2.12</h1>
   <div class="toolbar">
     <label>Тип печати:
       <select id="modeSelect"><option value="DTF">DTF</option><option value="UF_DTF">UF DTF</option></select>
@@ -68,6 +68,10 @@
 // constants
 const ROLL_WIDTH_CM = 58;
 const SCALE = 10; // px per 1 cm for preview
+const COLORS = [
+  '#4a90e2','#50e3c2','#f5a623','#d0021b','#9013fe','#7ed321','#f8e71c',
+  '#b8e986','#e67c73','#9b9b9b','#f39c12','#1abc9c','#8e44ad','#e74c3c','#2ecc71'
+];
 
 // elements
 const modeInput = document.getElementById('modeSelect');
@@ -81,14 +85,13 @@ const globalGapXInput = document.getElementById('globalGapX');
 const globalGapYInput = document.getElementById('globalGapY');
 
 // data
-let prints = []; // each: {w:cm, h:cm, q:int, rot:false|'auto'|true}
+let prints = []; 
 let priceManual = false;
 
 // helpers
 function createPrintBlockDOM(p, idx){
   const block = document.createElement('div');
   block.className = 'print-block-group';
-  // Use data attributes only on inputs/selects/buttons that need them
   block.innerHTML = `
     <div class="inputs-row">
       <label>Ширина (см):<input type="number" step="0.1" data-i="${idx}" data-k="w" value="${p.w}"></label>
@@ -111,175 +114,138 @@ function renderPrintInputs(){
 function addPrint(){
   prints.push({w:10,h:10,q:1,rot:'auto'});
   renderPrintInputs();
-  // no need to attach individual listeners — we'll use event delegation
   recalc();
 }
 
-// Event delegation: handle input/select/button clicks inside printsContainer
+// Event delegation for inputs/select/buttons
 printsContainer.addEventListener('input', e=>{
-  const target = e.target;
-  if(!target) return;
-  const i = target.dataset && target.dataset.i;
-  const k = target.dataset && target.dataset.k;
-  if(typeof i === 'undefined' || !k) return; // only handle controls with data-i and data-k
-  const idx = +i;
-  if(!Number.isInteger(idx) || idx < 0 || idx >= prints.length) return;
-
-  if(k === 'q') {
-    prints[idx][k] = Math.max(1, parseInt(target.value) || 1);
-  } else {
-    prints[idx][k] = parseFloat(target.value) || 0;
-  }
-  recalc();
-});
-
-// handle select changes (rotation)
-printsContainer.addEventListener('change', e=>{
-  const target = e.target;
-  if(!target) return;
-  const i = target.dataset && target.dataset.i;
-  const k = target.dataset && target.dataset.k;
+  const t = e.target;
+  if(!t) return;
+  const i = t.dataset && t.dataset.i;
+  const k = t.dataset && t.dataset.k;
   if(typeof i === 'undefined' || !k) return;
-  if(k !== 'rot') return;
   const idx = +i;
-  if(!Number.isInteger(idx) || idx < 0 || idx >= prints.length) return;
-  const val = target.value;
-  prints[idx].rot = (val === 'true') ? true : (val === 'false' ? false : 'auto');
+  if(idx < 0 || idx >= prints.length) return;
+  if(k==='q') prints[idx][k] = Math.max(1, parseInt(t.value)||1);
+  else prints[idx][k] = parseFloat(t.value)||0;
   recalc();
 });
 
-// handle remove button clicks
-printsContainer.addEventListener('click', e=>{
-  const target = e.target;
-  if(!target) return;
-  if(target.classList.contains('remove-btn')){
-    const i = target.dataset && target.dataset.i;
-    if(typeof i === 'undefined') return;
-    const idx = +i;
-    if(!Number.isInteger(idx) || idx < 0 || idx >= prints.length) return;
-    prints.splice(idx,1);
-    renderPrintInputs();
-    recalc();
-  }
+printsContainer.addEventListener('change', e=>{
+  const t = e.target;
+  if(!t) return;
+  const i = t.dataset && t.dataset.i;
+  const k = t.dataset && t.dataset.k;
+  if(typeof i === 'undefined' || !k) return;
+  if(k!=='rot') return;
+  const idx = +i;
+  if(idx<0 || idx>=prints.length) return;
+  prints[idx].rot = t.value==='true'?true:(t.value==='false'?false:'auto');
+  recalc();
 });
 
-function getAutoPrice(meters){
-  // цена для DTF и UF DTF
-  if(modeInput.value === 'UF_DTF'){
-    // новые цены UF DTF
-    if(meters < 1) return 3000;
-    if(meters >=1 && meters < 3) return 2000;
-    if(meters >=3 && meters < 10) return 1800;
-    if(meters >=10 && meters < 30) return 1600;
-    if(meters >=30 && meters < 50) return 1400;
+printsContainer.addEventListener('click', e=>{
+  const t = e.target;
+  if(!t || !t.classList.contains('remove-btn')) return;
+  const i = t.dataset && t.dataset.i;
+  if(typeof i==='undefined') return;
+  const idx = +i;
+  if(idx<0 || idx>=prints.length) return;
+  prints.splice(idx,1);
+  renderPrintInputs();
+  recalc();
+});
+
+function getAutoPrice(m){
+  if(modeInput.value==='UF_DTF'){
+    if(m<1) return 3000;
+    if(m<3) return 2000;
+    if(m<10) return 1800;
+    if(m<30) return 1600;
+    if(m<50) return 1400;
     return 1300;
+  } else {
+    if(m<1) return 1600;
+    if(m<3) return 1400;
+    if(m<10) return 1300;
+    if(m<30) return 1120;
+    if(m<50) return 900;
+    return 850;
   }
-  // старые цены DTF
-  if(meters < 1) return 1600;
-  if(meters >=1 && meters < 3) return 1400;
-  if(meters >=3 && meters < 10) return 1300;
-  if(meters >=10 && meters < 30) return 1120;
-  if(meters >=30 && meters < 50) return 900;
-  return 850;
 }
 
 function recalc(){
   previewCanvas.innerHTML = '';
-  const gapX = parseFloat(globalGapXInput.value);
-  const gapY = parseFloat(globalGapYInput.value);
-  const gx = isNaN(gapX) ? (modeInput.value==='DTF'?0.3:0.4) : gapX;
-  const gy = isNaN(gapY) ? (modeInput.value==='DTF'?0.3:0.4) : gapY;
+  const gx = parseFloat(globalGapXInput.value)||0.3;
+  const gy = parseFloat(globalGapYInput.value)||0.3;
 
-  // build list of individual prints
   const items = [];
-  prints.forEach(p=>{
-    for(let j=0;j<(p.q||0); j++) items.push({w:p.w, h:p.h, rot:p.rot});
-  });
+  prints.forEach(p=>{ for(let j=0;j<(p.q||0);j++) items.push({w:p.w,h:p.h,rot:p.rot}) });
 
-  // occupied rectangles in cm
   const occupied = [];
+  function overlaps(a,b){ return !(a.x+a.w<=b.x||a.x>=b.x+b.w||a.y+a.h<=b.y||a.y>=b.y+b.h); }
+  function fits(x,y,w,h){ return !occupied.some(r=>overlaps({x,y,w,h},r)); }
 
-  function overlaps(a, b){
-    return !(a.x + a.w <= b.x || a.x >= b.x + b.w || a.y + a.h <= b.y || a.y >= b.y + b.h);
-  }
-
-  function fits(x,y,w,h){
-    const rect = {x,y,w,h};
-    return !occupied.some(r => overlaps(rect, r));
-  }
-
-  // greedy placement
-  items.forEach(item => {
-    const w1 = item.w, h1 = item.h;
-    const w2 = item.h, h2 = item.w;
-    let useRotate;
-    if(item.rot === true) useRotate = true;
-    else if(item.rot === false) useRotate = false;
-    else useRotate = (w2 < w1);
-    const usedW = useRotate ? w2 : w1;
-    const usedH = useRotate ? h2 : h1;
-
-    let placed = false;
-    for(let y=0; !placed && y<10000; y += 0.5){
-      for(let x=0; !placed && x <= ROLL_WIDTH_CM - usedW + 1e-6; x += 0.5){
-        if(fits(x, y, usedW + gx, usedH + gy)){
-          occupied.push({x, y, w: usedW + gx, h: usedH + gy, usedW, usedH});
-          placed = true;
+  items.forEach((item,idx)=>{
+    let w1=item.w,h1=item.h,w2=item.h,h2=item.w;
+    let useRotate=item.rot===true?true:item.rot===false?false:(w2<w1);
+    const usedW = useRotate?w2:w1, usedH=useRotate?h2:h1;
+    let placed=false;
+    for(let y=0;!placed&&y<10000;y+=0.5){
+      for(let x=0;!placed&&x<=ROLL_WIDTH_CM-usedW+1e-6;x+=0.5){
+        if(fits(x,y,usedW+gx,usedH+gy)){
+          occupied.push({x,y,w:usedW+gx,h:usedH+gy,usedW,usedH,idx});
+          placed=true;
         }
       }
     }
-    if(!placed){
-      occupied.push({x:0, y:10000, w: usedW + gx, h: usedH + gy, usedW, usedH});
-    }
+    if(!placed) occupied.push({x:0,y:10000,w:usedW+gx,h:usedH+gy,usedW,usedH,idx});
   });
 
-  // draw
-  let maxBottom = 0;
+  let maxBottom=0;
   occupied.forEach(r=>{
-    const el = document.createElement('div');
-    el.className = 'print-rect';
-    el.style.left = (r.x * SCALE) + 'px';
-    el.style.top = (r.y * SCALE) + 'px';
-    el.style.width = (r.usedW * SCALE) + 'px';
-    el.style.height = (r.usedH * SCALE) + 'px';
-    el.textContent = `${r.usedW.toFixed(1)}×${r.usedH.toFixed(1)}`;
+    const el=document.createElement('div');
+    el.className='print-rect';
+    el.style.left=(r.x*SCALE)+'px';
+    el.style.top=(r.y*SCALE)+'px';
+    el.style.width=(r.usedW*SCALE)+'px';
+    el.style.height=(r.usedH*SCALE)+'px';
+    el.style.backgroundColor = COLORS[r.idx % COLORS.length];
+    el.textContent=`${r.usedW.toFixed(1)}×${r.usedH.toFixed(1)}`;
     previewCanvas.appendChild(el);
-    maxBottom = Math.max(maxBottom, r.y + r.h);
+    maxBottom=Math.max(maxBottom,r.y+r.h);
   });
 
-  // preview canvas sizing (fixed width = 58cm)
-  const previewHeightPx = (maxBottom + 2) * SCALE; // +2cm padding
-  previewCanvas.style.width = (ROLL_WIDTH_CM * SCALE) + 'px';
-  previewCanvas.style.height = Math.max(previewHeightPx, 100) + 'px';
+  previewCanvas.style.width=(ROLL_WIDTH_CM*SCALE)+'px';
+  previewCanvas.style.height=Math.max((maxBottom+2)*SCALE,100)+'px';
 
-  // meters rounded up to hundredths
-  const meters = Math.ceil((maxBottom / 100) * 100) / 100;
+  const meters = Math.ceil((maxBottom/100)*100)/100;
 
-  // price per meter auto or manual
-  if(!priceManual){
-    pricePerMeterInput.value = getAutoPrice(meters);
-  }
-  const pricePerMeter = +pricePerMeterInput.value || 0;
-  const printPrice = Math.round(meters * pricePerMeter);
+  if(!priceManual) pricePerMeterInput.value=getAutoPrice(meters);
+  const pricePerMeter = +pricePerMeterInput.value||0;
+  const printPrice = Math.round(meters*pricePerMeter);
 
-  // apply price: per print
-  const totalPrints = prints.reduce((s,p)=>s + (p.q||0), 0);
-  const applyPrice = +applyPriceInput.value || 0;
-  const applyTotal = totalPrints * applyPrice;
+  const totalPrints = prints.reduce((s,p)=>s+(p.q||0),0);
+  const applyPrice = +applyPriceInput.value||0;
+  const applyTotal = totalPrints*applyPrice;
 
   const total = printPrice + applyTotal;
-  resultBox.textContent = `Итог: ${meters.toFixed(2)} м, ${total.toFixed(0)} ₽`;
+
+  resultBox.textContent = `Печать: ${printPrice} ₽\nНанесение: ${applyTotal} ₽\nИтого: ${total} ₽\nДлина: ${meters.toFixed(2)} м`;
 }
 
 // events
 addPrintBtn.addEventListener('click', addPrint);
-pricePerMeterInput.addEventListener('input', ()=>{ priceManual = true; recalc(); });
+pricePerMeterInput.addEventListener('input', ()=>{ priceManual=true; recalc(); });
 applyPriceInput.addEventListener('input', recalc);
 globalGapXInput.addEventListener('input', recalc);
 globalGapYInput.addEventListener('input', recalc);
-modeInput.addEventListener('change', ()=>{ if(modeInput.value==='DTF'){ globalGapXInput.value='0.3'; globalGapYInput.value='0.3'; } else { globalGapXInput.value='0.4'; globalGapYInput.value='0.4'; } priceManual=false; recalc(); });
+modeInput.addEventListener('change', ()=>{
+  if(modeInput.value==='DTF'){ globalGapXInput.value='0.3'; globalGapYInput.value='0.3'; } 
+  else { globalGapXInput.value='0.4'; globalGapYInput.value='0.4'; } 
+  priceManual=false; recalc();
+});
 
-// init
 addPrint();
 </script>
 </body>
