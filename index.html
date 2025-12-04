@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Калькулятор ДТФ 2.12</title>
+<title>Калькулятор ДТФ 2.13</title>
 <style>
   :root {
     --main-bg: #f0f2f5;
@@ -25,20 +25,21 @@
   .preview { margin-top:16px; height:360px; overflow:auto; background:#ccc; border-radius:10px; padding:10px }
   #previewCanvas { position:relative; width:580px; min-height:100px; margin:0 auto; border:2px dashed #888; background:#fff }
   .print-rect { position:absolute; border:1px solid #2c6db2; color:#fff; display:flex; align-items:center; justify-content:center; font-size:11px; border-radius:4px; box-sizing:border-box }
-  #result { font-weight:bold; color:var(--accent-color); text-align:right; margin-top:10px; white-space:pre-line }
+  #result { font-weight:bold; color:var(--accent-color); text-align:right; margin-top:10px }
+  .preview-legend { display:flex; flex-wrap:wrap; gap:8px; font-size:14px; margin-top:10px }
+  .legend-item { display:flex; align-items:center; gap:4px; padding:2px 6px; border-radius:4px; color:#fff; font-weight:500; }
   @media (max-width:600px) { #previewCanvas { width:100% } .inputs-row { flex-direction:column } }
 </style>
 </head>
 <body>
 <div class="container">
-  <h1>Калькулятор ДТФ 2.12</h1>
+  <h1>Калькулятор ДТФ 2.11</h1>
   <div class="toolbar">
     <label>Тип печати:
       <select id="modeSelect"><option value="DTF">DTF</option><option value="UF_DTF">UF DTF</option></select>
     </label>
   </div>
 
-  <!-- Цена за нанесение -->
   <div class="inputs-row" style="margin-bottom:12px">
     <label>Цена за нанесение (₽ за шт):
       <input type="number" id="applyPrice" min="0" step="1" value="0" />
@@ -61,19 +62,14 @@
 
   <div class="preview">
     <div id="previewCanvas"></div>
+    <div class="preview-legend"></div>
   </div>
 </div>
 
 <script>
-// constants
 const ROLL_WIDTH_CM = 58;
-const SCALE = 10; // px per 1 cm for preview
-const COLORS = [
-  '#4a90e2','#50e3c2','#f5a623','#d0021b','#9013fe','#7ed321','#f8e71c',
-  '#b8e986','#e67c73','#9b9b9b','#f39c12','#1abc9c','#8e44ad','#e74c3c','#2ecc71'
-];
+const SCALE = 10;
 
-// elements
 const modeInput = document.getElementById('modeSelect');
 const printsContainer = document.getElementById('printsContainer');
 const addPrintBtn = document.getElementById('addPrintBtn');
@@ -83,12 +79,11 @@ const pricePerMeterInput = document.getElementById('pricePerMeter');
 const applyPriceInput = document.getElementById('applyPrice');
 const globalGapXInput = document.getElementById('globalGapX');
 const globalGapYInput = document.getElementById('globalGapY');
+const legendContainer = document.querySelector('.preview-legend');
 
-// data
-let prints = []; 
+let prints = [];
 let priceManual = false;
 
-// helpers
 function createPrintBlockDOM(p, idx){
   const block = document.createElement('div');
   block.className = 'print-block-group';
@@ -117,136 +112,114 @@ function addPrint(){
   recalc();
 }
 
-// Event delegation for inputs/select/buttons
 printsContainer.addEventListener('input', e=>{
-  const t = e.target;
-  if(!t) return;
-  const i = t.dataset && t.dataset.i;
-  const k = t.dataset && t.dataset.k;
+  const target = e.target;
+  if(!target) return;
+  const i = target.dataset && target.dataset.i;
+  const k = target.dataset && target.dataset.k;
   if(typeof i === 'undefined' || !k) return;
   const idx = +i;
-  if(idx < 0 || idx >= prints.length) return;
-  if(k==='q') prints[idx][k] = Math.max(1, parseInt(t.value)||1);
-  else prints[idx][k] = parseFloat(t.value)||0;
+  if(!Number.isInteger(idx) || idx < 0 || idx >= prints.length) return;
+
+  if(k === 'q') {
+    prints[idx][k] = Math.max(1, parseInt(target.value) || 1);
+  } else {
+    prints[idx][k] = parseFloat(target.value) || 0;
+  }
   recalc();
 });
 
 printsContainer.addEventListener('change', e=>{
-  const t = e.target;
-  if(!t) return;
-  const i = t.dataset && t.dataset.i;
-  const k = t.dataset && t.dataset.k;
+  const target = e.target;
+  if(!target) return;
+  const i = target.dataset && target.dataset.i;
+  const k = target.dataset && target.dataset.k;
   if(typeof i === 'undefined' || !k) return;
-  if(k!=='rot') return;
+  if(k !== 'rot') return;
   const idx = +i;
-  if(idx<0 || idx>=prints.length) return;
-  prints[idx].rot = t.value==='true'?true:(t.value==='false'?false:'auto');
+  if(!Number.isInteger(idx) || idx < 0 || idx >= prints.length) return;
+  const val = target.value;
+  prints[idx].rot = (val === 'true') ? true : (val === 'false' ? false : 'auto');
   recalc();
 });
 
 printsContainer.addEventListener('click', e=>{
-  const t = e.target;
-  if(!t || !t.classList.contains('remove-btn')) return;
-  const i = t.dataset && t.dataset.i;
-  if(typeof i==='undefined') return;
-  const idx = +i;
-  if(idx<0 || idx>=prints.length) return;
-  prints.splice(idx,1);
-  renderPrintInputs();
-  recalc();
+  const target = e.target;
+  if(!target) return;
+  if(target.classList.contains('remove-btn')){
+    const i = target.dataset && target.dataset.i;
+    if(typeof i === 'undefined') return;
+    const idx = +i;
+    if(!Number.isInteger(idx) || idx < 0 || idx >= prints.length) return;
+    prints.splice(idx,1);
+    renderPrintInputs();
+    recalc();
+  }
 });
 
-function getAutoPrice(m){
-  if(modeInput.value==='UF_DTF'){
-    if(m<1) return 3000;
-    if(m<3) return 2000;
-    if(m<10) return 1800;
-    if(m<30) return 1600;
-    if(m<50) return 1400;
+function getAutoPrice(meters){
+  if(modeInput.value === 'UF_DTF'){
+    if(meters < 1) return 3000;
+    if(meters >=1 && meters < 3) return 2000;
+    if(meters >=3 && meters < 10) return 1800;
+    if(meters >=10 && meters < 30) return 1600;
+    if(meters >=30 && meters < 50) return 1400;
     return 1300;
-  } else {
-    if(m<1) return 1600;
-    if(m<3) return 1400;
-    if(m<10) return 1300;
-    if(m<30) return 1120;
-    if(m<50) return 900;
-    return 850;
   }
+  if(meters < 1) return 1600;
+  if(meters >=1 && meters < 3) return 1400;
+  if(meters >=3 && meters < 10) return 1300;
+  if(meters >=10 && meters < 30) return 1120;
+  if(meters >=30 && meters < 50) return 900;
+  return 850;
 }
 
 function recalc(){
   previewCanvas.innerHTML = '';
-  const gx = parseFloat(globalGapXInput.value)||0.3;
-  const gy = parseFloat(globalGapYInput.value)||0.3;
+  legendContainer.innerHTML = '';
+  const gapX = parseFloat(globalGapXInput.value);
+  const gapY = parseFloat(globalGapYInput.value);
+  const gx = isNaN(gapX) ? (modeInput.value==='DTF'?0.3:0.4) : gapX;
+  const gy = isNaN(gapY) ? (modeInput.value==='DTF'?0.3:0.4) : gapY;
 
   const items = [];
-  prints.forEach(p=>{ for(let j=0;j<(p.q||0);j++) items.push({w:p.w,h:p.h,rot:p.rot}) });
+  prints.forEach(p=>{
+    for(let j=0;j<(p.q||0); j++) items.push({w:p.w, h:p.h, rot:p.rot});
+  });
 
   const occupied = [];
-  function overlaps(a,b){ return !(a.x+a.w<=b.x||a.x>=b.x+b.w||a.y+a.h<=b.y||a.y>=b.y+b.h); }
-  function fits(x,y,w,h){ return !occupied.some(r=>overlaps({x,y,w,h},r)); }
 
-  items.forEach((item,idx)=>{
-    let w1=item.w,h1=item.h,w2=item.h,h2=item.w;
-    let useRotate=item.rot===true?true:item.rot===false?false:(w2<w1);
-    const usedW = useRotate?w2:w1, usedH=useRotate?h2:h1;
-    let placed=false;
-    for(let y=0;!placed&&y<10000;y+=0.5){
-      for(let x=0;!placed&&x<=ROLL_WIDTH_CM-usedW+1e-6;x+=0.5){
-        if(fits(x,y,usedW+gx,usedH+gy)){
-          occupied.push({x,y,w:usedW+gx,h:usedH+gy,usedW,usedH,idx});
-          placed=true;
+  function overlaps(a, b){ return !(a.x + a.w <= b.x || a.x >= b.x + b.w || a.y + a.h <= b.y || a.y >= b.y + b.h); }
+  function fits(x,y,w,h){ return !occupied.some(r => overlaps({x,y,w,h}, r)); }
+
+  items.forEach(item => {
+    const w1 = item.w, h1 = item.h;
+    const w2 = item.h, h2 = item.w;
+    let useRotate = item.rot===true?true:item.rot===false?false:(w2<w1);
+    const usedW = useRotate ? w2 : w1;
+    const usedH = useRotate ? h2 : h1;
+
+    let placed = false;
+    for(let y=0; !placed && y<10000; y += 0.5){
+      for(let x=0; !placed && x <= ROLL_WIDTH_CM - usedW + 1e-6; x += 0.5){
+        if(fits(x, y, usedW + gx, usedH + gy)){
+          occupied.push({x, y, w: usedW + gx, h: usedH + gy, usedW, usedH});
+          placed = true;
         }
       }
     }
-    if(!placed) occupied.push({x:0,y:10000,w:usedW+gx,h:usedH+gy,usedW,usedH,idx});
+    if(!placed){ occupied.push({x:0, y:10000, w: usedW + gx, h: usedH + gy, usedW, usedH}); }
   });
 
-  let maxBottom=0;
+  let maxBottom = 0;
+  const COLORS = ['#4a90e2','#50e3c2','#f5a623','#d0021b','#9013fe','#b8e986','#f8e71c','#7ed321','#f45c42'];
+  const sizeColors = {};
+  let colorIndex = 0;
+
   occupied.forEach(r=>{
-    const el=document.createElement('div');
-    el.className='print-rect';
-    el.style.left=(r.x*SCALE)+'px';
-    el.style.top=(r.y*SCALE)+'px';
-    el.style.width=(r.usedW*SCALE)+'px';
-    el.style.height=(r.usedH*SCALE)+'px';
-    el.style.backgroundColor = COLORS[r.idx % COLORS.length];
-    el.textContent=`${r.usedW.toFixed(1)}×${r.usedH.toFixed(1)}`;
-    previewCanvas.appendChild(el);
-    maxBottom=Math.max(maxBottom,r.y+r.h);
-  });
-
-  previewCanvas.style.width=(ROLL_WIDTH_CM*SCALE)+'px';
-  previewCanvas.style.height=Math.max((maxBottom+2)*SCALE,100)+'px';
-
-  const meters = Math.ceil((maxBottom/100)*100)/100;
-
-  if(!priceManual) pricePerMeterInput.value=getAutoPrice(meters);
-  const pricePerMeter = +pricePerMeterInput.value||0;
-  const printPrice = Math.round(meters*pricePerMeter);
-
-  const totalPrints = prints.reduce((s,p)=>s+(p.q||0),0);
-  const applyPrice = +applyPriceInput.value||0;
-  const applyTotal = totalPrints*applyPrice;
-
-  const total = printPrice + applyTotal;
-
-  resultBox.textContent = `Печать: ${printPrice} ₽\nНанесение: ${applyTotal} ₽\nИтого: ${total} ₽\nДлина: ${meters.toFixed(2)} м`;
-}
-
-// events
-addPrintBtn.addEventListener('click', addPrint);
-pricePerMeterInput.addEventListener('input', ()=>{ priceManual=true; recalc(); });
-applyPriceInput.addEventListener('input', recalc);
-globalGapXInput.addEventListener('input', recalc);
-globalGapYInput.addEventListener('input', recalc);
-modeInput.addEventListener('change', ()=>{
-  if(modeInput.value==='DTF'){ globalGapXInput.value='0.3'; globalGapYInput.value='0.3'; } 
-  else { globalGapXInput.value='0.4'; globalGapYInput.value='0.4'; } 
-  priceManual=false; recalc();
-});
-
-addPrint();
-</script>
-</body>
-</html>
+    const key = `${r.usedW.toFixed(1)}x${r.usedH.toFixed(1)}`;
+    if(!sizeColors[key]){ sizeColors[key] = COLORS[colorIndex % COLORS.length]; colorIndex++; }
+    const el = document.createElement('div');
+    el.className = 'print-rect';
+    el.style.left = (r.x * SCALE) + 'px';
+    el.style.top = (r.y
