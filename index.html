@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Калькулятор ДТФ 2.13</title>
+<title>Калькулятор ДТФ 2.11</title>
 <style>
   :root {
     --main-bg: #f0f2f5;
@@ -222,4 +222,48 @@ function recalc(){
     const el = document.createElement('div');
     el.className = 'print-rect';
     el.style.left = (r.x * SCALE) + 'px';
-    el.style.top = (r.y
+    el.style.top = (r.y * SCALE) + 'px';
+    el.style.width = (r.usedW * SCALE) + 'px';
+    el.style.height = (r.usedH * SCALE) + 'px';
+    el.style.backgroundColor = sizeColors[key];
+    el.textContent = key;
+    previewCanvas.appendChild(el);
+    maxBottom = Math.max(maxBottom, r.y + r.h);
+  });
+
+  const previewHeightPx = (maxBottom + 2) * SCALE;
+  previewCanvas.style.width = (ROLL_WIDTH_CM * SCALE) + 'px';
+  previewCanvas.style.height = Math.max(previewHeightPx, 100) + 'px';
+
+  const meters = Math.ceil((maxBottom / 100) * 100) / 100;
+  if(!priceManual){ pricePerMeterInput.value = getAutoPrice(meters); }
+  const pricePerMeter = +pricePerMeterInput.value || 0;
+  const printPrice = Math.round(meters * pricePerMeter);
+
+  const totalPrints = prints.reduce((s,p)=>s + (p.q||0), 0);
+  const applyPrice = +applyPriceInput.value || 0;
+  const applyTotal = totalPrints * applyPrice;
+
+  const total = printPrice + applyTotal;
+  resultBox.textContent = `Итог: ${meters.toFixed(2)} м, ${total.toFixed(0)} ₽`;
+
+  for(const [size, color] of Object.entries(sizeColors)){
+    const item = document.createElement('div');
+    item.className = 'legend-item';
+    item.style.backgroundColor = color;
+    item.textContent = size;
+    legendContainer.appendChild(item);
+  }
+}
+
+addPrintBtn.addEventListener('click', addPrint);
+pricePerMeterInput.addEventListener('input', ()=>{ priceManual = true; recalc(); });
+applyPriceInput.addEventListener('input', recalc);
+globalGapXInput.addEventListener('input', recalc);
+globalGapYInput.addEventListener('input', recalc);
+modeInput.addEventListener('change', ()=>{ if(modeInput.value==='DTF'){ globalGapXInput.value='0.3'; globalGapYInput.value='0.3'; } else { globalGapXInput.value='0.4'; globalGapYInput.value='0.4'; } priceManual=false; recalc(); });
+
+addPrint();
+</script>
+</body>
+</html>
